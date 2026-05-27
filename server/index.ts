@@ -1,10 +1,28 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { config } from "./config.js";
 import { getDb, closeDb } from "./db/client.js";
 import { booksRouter } from "./routes/books.js";
 import { uploadRouter } from "./routes/upload.js";
-import { ensureUploadDir } from "./services/storage.js";
+import { ensureUploadDir, ensureBooksDir } from "./services/storage.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Walk up from __dirname until we find the project root (contains package.json).
+// Works for both dev (server/) and prod (dist/server/).
+function findProjectRoot(start: string): string {
+  let dir = start;
+  while (true) {
+    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return start; // filesystem root fallback
+    dir = parent;
+  }
+}
+const projectRoot = findProjectRoot(__dirname);
+const clientDist = path.join(projectRoot, "client", "dist");
 
 const app = express();
 
@@ -17,6 +35,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 ensureUploadDir();
+ensureBooksDir();
 getDb();
 
 app.get("/health", (_req, res) => {
@@ -25,6 +44,15 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/upload", uploadRouter);
 app.use("/api/books", booksRouter);
+
+// Serve the built PWA client for all non-API routes.
+// In dev mode the client/dist folder may not exist yet — skip gracefully.
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get("*splat", (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+}
 
 app.use(
   (

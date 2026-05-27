@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { config } from "../config.js";
 import type {
@@ -11,14 +10,32 @@ import type {
   SourceType,
 } from "../types/book.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 let db: Database.Database | null = null;
 
-function readSchema(): string {
-  const schemaFile = path.join(__dirname, "schema.sql");
-  return fs.readFileSync(schemaFile, "utf-8");
-}
+// Inlined so the compiled dist/ bundle has no runtime dependency on schema.sql
+const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS books (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  author TEXT NOT NULL,
+  source_filename TEXT NOT NULL,
+  source_type TEXT NOT NULL CHECK (source_type IN ('epub', 'pdf')),
+  total_chunks INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS chunks (
+  book_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  sentences_json TEXT NOT NULL,
+  chapter_title TEXT,
+  PRIMARY KEY (book_id, chunk_index),
+  FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_book_index ON chunks (book_id, chunk_index);
+`;
 
 function runMigrations(database: Database.Database): void {
   const columns = database
@@ -37,7 +54,7 @@ export function getDb(): Database.Database {
   db = new Database(config.dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  db.exec(readSchema());
+  db.exec(SCHEMA_SQL);
   runMigrations(db);
   return db;
 }
@@ -114,6 +131,12 @@ export function getBookById(id: string): BookRecord | undefined {
   return database
     .prepare(`SELECT * FROM books WHERE id = ?`)
     .get(id) as BookRecord | undefined;
+}
+
+export function deleteBook(id: string): boolean {
+  const database = getDb();
+  const result = database.prepare(`DELETE FROM books WHERE id = ?`).run(id);
+  return result.changes > 0;
 }
 
 export function getChunk(

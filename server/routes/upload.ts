@@ -11,10 +11,16 @@ import {
   generateBookId,
   getSourceType,
   isAcademicFlag,
+  writeBookFiles,
 } from "../services/storage.js";
+import type { ParsedChunk } from "../types/book.js";
 import type { UploadResponseDto } from "../types/book.js";
 
 ensureUploadDir();
+
+// ---------------------------------------------------------------------------
+// Multer — disk storage in the uploads temp dir
+// ---------------------------------------------------------------------------
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -22,6 +28,7 @@ const storage = multer.diskStorage({
     cb(null, config.uploadsDir);
   },
   filename: (_req, file, cb) => {
+    // Embed a fresh UUID in the temp filename so we can reuse it as bookId
     const bookId = generateBookId();
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, `${bookId}${ext}`);
@@ -30,7 +37,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB per file
   fileFilter: (_req, file, cb) => {
     const sourceType = getSourceType(file.originalname, file.mimetype);
     if (!sourceType) {
@@ -41,23 +48,43 @@ const upload = multer({
   },
 });
 
-export const uploadRouter = Router();
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-uploadRouter.post("/", upload.single("file"), async (req, res) => {
-  const file = req.file;
-  if (!file) {
-    res.status(400).json({ error: "No file uploaded. Use field name 'file'." });
-    return;
-  }
+/**
+ * Convert parsed chunks to a simple Markdown representation for source.md.
+ * Each chunk is separated by a horizontal rule so the file is human-readable.
+ */
+function chunksToMarkdown(
+  title: string,
+  author: string,
+  chunks: ParsedChunk[]
+): string {
+  const header = `# ${title}\n\n**Author:** ${author}\n\n`;
+  const body = chunks
+    .map((c) => {
+      const chapterLine = c.chapterTitle ? `## ${c.chapterTitle}\n\n` : "";
+      return `${chapterLine}${c.text}`;
+    })
+    .join("\n\n---\n\n");
+  return header + body;
+}
 
+/**
+ * Process a single uploaded file: parse → write file tree → insert DB → unlink temp.
+ */
+async function processUploadedFile(
+  file: Express.Multer.File,
+  academic: boolean
+): Promise<UploadResponseDto> {
   const sourceType = getSourceType(file.originalname, file.mimetype);
   if (!sourceType) {
     deleteFileIfExists(file.path);
-    res.status(400).json({ error: "Only EPUB and PDF files are supported" });
-    return;
+    throw new Error("Only EPUB and PDF files are supported");
   }
 
-  const academic = isAcademicFlag(req.body?.academic);
+  // The UUID was embedded in the temp filename by multer
   const bookId = path.basename(file.filename, path.extname(file.filename));
 
   try {
@@ -68,6 +95,11 @@ uploadRouter.post("/", upload.single("file"), async (req, res) => {
       academic
     );
 
+    // 1. Write persistent file tree: /library/books/<bookId>/source.md + chunks.json
+    const markdown = chunksToMarkdown(parsed.title, parsed.author, parsed.chunks);
+    writeBookFiles(bookId, markdown, parsed.chunks);
+
+    // 2. Persist metadata + chunks to SQLite
     insertBookWithChunks({
       id: bookId,
       title: parsed.title,
@@ -77,19 +109,76 @@ uploadRouter.post("/", upload.single("file"), async (req, res) => {
       chunks: parsed.chunks,
     });
 
-    const response: UploadResponseDto = {
+    return {
       bookId,
       title: parsed.title,
       author: parsed.author,
       totalChunks: parsed.chunks.length,
     };
-
-    res.status(201).json(response);
-  } catch (err) {
+  } finally {
+    // 3. Always drop the heavy source file from the temp uploads dir
     deleteFileIfExists(file.path);
-    const message =
-      err instanceof Error ? err.message : "Failed to parse uploaded file";
-    console.error("Upload parse error:", err);
-    res.status(422).json({ error: message });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Router
+// ---------------------------------------------------------------------------
+
+export const uploadRouter = Router();
+
+/**
+ * POST /api/upload
+ *
+ * Accepts one or more EPUB/PDF files via the "file" field (multi-file drop
+ * supported). Each file is parsed, written to the persistent file tree, stored
+ * in the database, and the original upload is immediately deleted.
+ *
+ * Single file  → returns UploadResponseDto directly (backwards-compatible).
+ * Multiple files → returns { results: UploadResponseDto[], errors: {...}[] }.
+ */
+uploadRouter.post("/", upload.array("file", 50), async (req, res) => {
+  const files = req.files as Express.Multer.File[] | undefined;
+
+  if (!files || files.length === 0) {
+    res.status(400).json({ error: "No file uploaded. Use field name 'file'." });
+    return;
+  }
+
+  const academic = isAcademicFlag(req.body?.academic);
+
+  // ── Single-file path (backwards-compatible response shape) ──────────────
+  if (files.length === 1) {
+    try {
+      const result = await processUploadedFile(files[0], academic);
+      res.status(201).json(result);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to parse uploaded file";
+      console.error("Upload parse error:", err);
+      res.status(422).json({ error: message });
+    }
+    return;
+  }
+
+  // ── Multi-file path ──────────────────────────────────────────────────────
+  const results: UploadResponseDto[] = [];
+  const errors: { filename: string; error: string }[] = [];
+
+  await Promise.allSettled(
+    files.map(async (file) => {
+      try {
+        const result = await processUploadedFile(file, academic);
+        results.push(result);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to parse uploaded file";
+        console.error(`Upload parse error [${file.originalname}]:`, err);
+        errors.push({ filename: file.originalname, error: message });
+      }
+    })
+  );
+
+  const status = results.length === 0 ? 422 : 201;
+  res.status(status).json({ results, errors });
 });

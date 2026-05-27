@@ -17,7 +17,8 @@ body {
   background: var(--color-canvas);
   color: var(--color-muted);
   font-family: var(--font-family);
-  font-size: var(--font-size-base);
+  /* font-size driven by the slider via --reading-font-size inline var */
+  font-size: var(--reading-font-size, var(--font-size-base));
   line-height: var(--line-height-reading);
   letter-spacing: var(--letter-spacing);
   -webkit-font-smoothing: antialiased;
@@ -25,6 +26,7 @@ body {
   overflow: hidden;
   touch-action: manipulation;
   user-select: none;
+  transition: background 200ms ease, color 200ms ease;
 }
 
 button {
@@ -43,13 +45,18 @@ button {
   background: var(--color-canvas);
 }
 
+/* ── Central reading column ─────────────────────────────────── */
 .reading-column {
   width: 100%;
   max-width: var(--column-max-width);
   margin-inline: auto;
   padding-inline: var(--column-padding-x);
+  /* honour notch / home-bar on iOS */
+  padding-left: max(var(--column-padding-x), env(safe-area-inset-left));
+  padding-right: max(var(--column-padding-x), env(safe-area-inset-right));
 }
 
+/* ── Sentence rendering ─────────────────────────────────────── */
 .sentence {
   margin: 0 0 0.75em;
   color: var(--color-muted);
@@ -63,4 +70,53 @@ button {
 .sentence--focal {
   color: var(--color-focal);
   opacity: 1;
+}
+
+/* ── Settings rail (floats beside column on wide viewports) ─── */
+.settings-rail {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 10;
+  padding: 12px 8px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(142, 142, 147, 0.15);
+  /* hidden until viewport is wide enough to have lateral space */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms;
+}
+
+.settings-rail--left  { left:  max(8px, calc((100vw - var(--column-max-width)) / 2 - 64px)); }
+.settings-rail--right { right: max(8px, calc((100vw - var(--column-max-width)) / 2 - 64px)); }
+
+/* show rails only when there's at least 56px of lateral space */
+@media (min-width: calc(650px + 128px)) {
+  .settings-rail {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.settings-rail__btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(142, 142, 147, 0.25);
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms, border-color 120ms;
+}
+
+.settings-rail__btn--active {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch server/index.ts",
     "dev:client": "npm run dev --prefix client",
-    "build": "tsc",
+    "build": "tsc && npm run build --prefix client",
     "build:client": "npm run build --prefix client",
     "start": "node dist/server/index.js",
     "test": "vitest run"

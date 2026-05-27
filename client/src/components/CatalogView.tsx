@@ -5,9 +5,10 @@ import "./CatalogView.css";
 
 interface CatalogViewProps {
   onSelectBook: (book: BookMetadata) => void;
+  onOpenSettings: () => void;
 }
 
-export function CatalogView({ onSelectBook }: CatalogViewProps) {
+export function CatalogView({ onSelectBook, onOpenSettings }: CatalogViewProps) {
   const [books, setBooks] = useState<BookMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +40,17 @@ export function CatalogView({ onSelectBook }: CatalogViewProps) {
   return (
     <div className="catalog">
       <header className="catalog__header reading-column">
-        <h1 className="catalog__title">iSpeedRead</h1>
+        <div className="catalog__header-top">
+          <h1 className="catalog__title">iSpeedRead</h1>
+          <button
+            type="button"
+            className="catalog__settings"
+            onClick={onOpenSettings}
+            aria-label="Display settings"
+          >
+            ⚙
+          </button>
+        </div>
         <p className="catalog__subtitle">Library</p>
         <p className="catalog__api">Server: {getApiBaseDisplay()}</p>
       </header>

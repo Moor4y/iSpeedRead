@@ -1,8 +1,25 @@
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, "..");
+
+/**
+ * Walk up from __dirname until we find the directory that contains
+ * package.json — that's the real project root regardless of whether
+ * we're running from server/ (dev) or dist/server/ (prod).
+ */
+function findProjectRoot(start: string): string {
+  let dir = start;
+  while (true) {
+    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return start;
+    dir = parent;
+  }
+}
+
+const projectRoot = findProjectRoot(__dirname);
 
 export const config = {
   port: Number(process.env.PORT) || 5000,
@@ -15,6 +32,11 @@ export const config = {
     projectRoot,
     process.env.LIBRARY_ROOT || "library",
     "uploads"
+  ),
+  booksDir: path.resolve(
+    projectRoot,
+    process.env.LIBRARY_ROOT || "library",
+    "books"
   ),
   dbPath: path.resolve(projectRoot, process.env.DB_PATH || "data/library.db"),
   pythonPath: process.env.PYTHON_PATH || "python",

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Chunk, TtsLang } from "../types";
+import type { Chunk, TtsLang, TtsVoice } from "../types";
 import {
   base64ToBlob,
   findActiveSentenceIndex,
@@ -12,7 +12,9 @@ interface UseTtsPlaybackOptions {
   chunk: Chunk | null;
   nextChunkIndex: number | null;
   lang: TtsLang;
-  playbackRate: number;
+  voice: TtsVoice;
+  /** Client-side playback rate (1 = normal). Combined with server 2× = effective rate. */
+  clientRate: number;
   enabled: boolean;
   onPageEnd?: () => void;
 }
@@ -22,7 +24,8 @@ export function useTtsPlayback({
   chunk,
   nextChunkIndex,
   lang,
-  playbackRate,
+  voice,
+  clientRate,
   enabled,
   onPageEnd,
 }: UseTtsPlaybackOptions) {
@@ -30,9 +33,8 @@ export function useTtsPlayback({
   const objectUrlRef = useRef<string | null>(null);
   const shouldResumeRef = useRef(false);
   const chunkIndexRef = useRef<number | null>(null);
-  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(
-    null
-  );
+
+  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,11 +67,12 @@ export function useTtsPlayback({
         const payload = await loadTtsPayload(
           bookId,
           targetChunk.index,
-          lang
+          lang,
+          voice
         );
 
         if (nextChunkIndex !== null) {
-          prefetchTts(bookId, nextChunkIndex, lang);
+          prefetchTts(bookId, nextChunkIndex, lang, voice);
         }
 
         const blob = base64ToBlob(payload.audioBase64, payload.mimeType);
@@ -80,7 +83,7 @@ export function useTtsPlayback({
         audioRef.current = audio;
 
         audio.src = url;
-        audio.playbackRate = playbackRate;
+        audio.playbackRate = clientRate;
         audio.onended = () => {
           setIsPlaying(false);
           setActiveSentenceIndex(null);
@@ -104,24 +107,18 @@ export function useTtsPlayback({
         setIsLoading(false);
       }
     },
-    [
-      bookId,
-      lang,
-      nextChunkIndex,
-      onPageEnd,
-      playbackRate,
-      revokeUrl,
-      stop,
-    ]
+    [bookId, lang, voice, nextChunkIndex, onPageEnd, clientRate, revokeUrl, stop]
   );
 
+  // Keep playback rate in sync without reloading audio
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) {
-      audio.playbackRate = playbackRate;
+      audio.playbackRate = clientRate;
     }
-  }, [playbackRate]);
+  }, [clientRate]);
 
+  // React to chunk changes and enabled toggle
   useEffect(() => {
     if (!enabled || !chunk) {
       stop();
@@ -131,7 +128,7 @@ export function useTtsPlayback({
     }
 
     if (nextChunkIndex !== null) {
-      prefetchTts(bookId, nextChunkIndex, lang);
+      prefetchTts(bookId, nextChunkIndex, lang, voice);
     }
 
     const indexChanged =
@@ -141,16 +138,7 @@ export function useTtsPlayback({
     if (enabled && shouldResumeRef.current && indexChanged) {
       void loadAndPlay(chunk);
     }
-  }, [
-    bookId,
-    chunk,
-    enabled,
-    lang,
-    loadAndPlay,
-    nextChunkIndex,
-    revokeUrl,
-    stop,
-  ]);
+  }, [bookId, chunk, enabled, lang, voice, loadAndPlay, nextChunkIndex, revokeUrl, stop]);
 
   useEffect(() => {
     if (!enabled) {
@@ -158,6 +146,7 @@ export function useTtsPlayback({
     }
   }, [enabled]);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stop();

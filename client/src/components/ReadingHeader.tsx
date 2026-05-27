@@ -9,6 +9,7 @@ interface ReadingHeaderProps {
   currentChunk: Chunk | null;
   chunkIndex: number;
   onBack: () => void;
+  onOpenSettings: () => void;
   tts: TtsControlsProps;
 }
 
@@ -17,6 +18,7 @@ export function ReadingHeader({
   currentChunk,
   chunkIndex,
   onBack,
+  onOpenSettings,
   tts,
 }: ReadingHeaderProps) {
   const chapterLabel = getDisplayChapterTitle(currentChunk);
@@ -30,6 +32,14 @@ export function ReadingHeader({
         <span className="reading-header__progress">
           {chunkIndex + 1} / {book.totalChunks}
         </span>
+        <button
+          type="button"
+          className="reading-header__settings"
+          onClick={onOpenSettings}
+          aria-label="Display settings"
+        >
+          ⚙
+        </button>
       </div>
 
       <div className="reading-header__titles">
