@@ -1,0 +1,70 @@
+.triple-buffer {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-canvas);
+}
+
+.triple-buffer__track {
+  display: flex;
+  flex-direction: column;
+  height: 300%;
+  will-change: transform;
+}
+
+.triple-buffer__track--animating {
+  transition: var(--transition-slide);
+}
+
+.triple-buffer__panel {
+  flex: 0 0 33.333%;
+  height: 33.333%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-block: clamp(48px, 12vh, 96px) clamp(80px, 18vh, 120px);
+}
+
+.chunk-panel__status {
+  opacity: 0.5;
+  text-align: center;
+  margin-top: 40vh;
+}
+
+.triple-buffer__chrome {
+  position: fixed;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.triple-buffer__nav {
+  pointer-events: auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid rgba(142, 142, 147, 0.35);
+  color: var(--color-muted);
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+.triple-buffer__nav:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.triple-buffer__nav:not(:disabled):active {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}

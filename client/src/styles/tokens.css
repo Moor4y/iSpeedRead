@@ -1,0 +1,18 @@
+:root {
+  --color-canvas: #000000;
+  --color-muted: #8e8e93;
+  --color-focal: #ffffff;
+  --color-accent: #ff9500;
+  --color-dim-opacity: 0.25;
+
+  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI", system-ui, sans-serif;
+  --font-size-base: 24px;
+  --line-height-reading: 1.65;
+  --letter-spacing: 0.02em;
+
+  --column-max-width: 650px;
+  --column-padding-x: clamp(24px, 8vw, 64px);
+
+  --transition-slide: transform 150ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
