@@ -1,40 +1,28 @@
 import localforage from "localforage";
 import { fetchChunkTts } from "../api";
-import type { TtsLang, TtsPayload } from "../types";
+import type { TtsLang, TtsPayload, TtsVoice } from "../types";
 
 const ttsStore = localforage.createInstance({
   name: "ispeedread",
   storeName: "tts",
 });
 
-function cacheKey(bookId: string, chunkIndex: number, lang: TtsLang): string {
-  return `${bookId}:${chunkIndex}:${lang}`;
+/** Cache key includes voice so different voices are stored independently. */
+function cacheKey(bookId: string, chunkIndex: number, voice: TtsVoice): string {
+  return `${bookId}:${chunkIndex}:${voice}`;
 }
 
 /** In-memory double buffer: current + prefetched next */
 const memoryBuffer = new Map<string, TtsPayload>();
 
-export function getMemoryTts(
-  bookId: string,
-  chunkIndex: number,
-  lang: TtsLang
-): TtsPayload | undefined {
-  return memoryBuffer.get(cacheKey(bookId, chunkIndex, lang));
-}
-
-export function setMemoryTts(payload: TtsPayload): void {
-  memoryBuffer.set(
-    cacheKey(payload.bookId, payload.chunkIndex, payload.lang),
-    payload
-  );
-}
-
 export async function loadTtsPayload(
   bookId: string,
   chunkIndex: number,
-  lang: TtsLang
+  lang: TtsLang,
+  voice: TtsVoice
 ): Promise<TtsPayload> {
-  const key = cacheKey(bookId, chunkIndex, lang);
+  const key = cacheKey(bookId, chunkIndex, voice);
+
   const inMemory = memoryBuffer.get(key);
   if (inMemory) return inMemory;
 
@@ -44,7 +32,7 @@ export async function loadTtsPayload(
     return stored;
   }
 
-  const payload = await fetchChunkTts(bookId, chunkIndex, lang);
+  const payload = await fetchChunkTts(bookId, chunkIndex, lang, voice);
   memoryBuffer.set(key, payload);
   await ttsStore.setItem(key, payload);
   return payload;
@@ -54,13 +42,14 @@ export async function loadTtsPayload(
 export function prefetchTts(
   bookId: string,
   chunkIndex: number,
-  lang: TtsLang
+  lang: TtsLang,
+  voice: TtsVoice
 ): void {
   if (chunkIndex < 0) return;
-  const key = cacheKey(bookId, chunkIndex, lang);
+  const key = cacheKey(bookId, chunkIndex, voice);
   if (memoryBuffer.has(key)) return;
 
-  void loadTtsPayload(bookId, chunkIndex, lang).catch((err) => {
+  void loadTtsPayload(bookId, chunkIndex, lang, voice).catch((err) => {
     console.warn(`TTS prefetch failed for chunk ${chunkIndex}:`, err);
   });
 }

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTripleBuffer } from "../hooks/useTripleBuffer";
 import { useTtsPlayback } from "../hooks/useTtsPlayback";
-import type { BookMetadata, TtsLang } from "../types";
+import type { BookMetadata, TtsLang, TtsVoice } from "../types";
+import { TTS_DEFAULT_VOICE } from "../types";
+import { loadTtsPrefs, updateTtsPrefs, setVoiceForLang } from "../tts/prefs";
 import { ReadingHeader } from "./ReadingHeader";
 import { TripleBufferViewport } from "./TripleBufferViewport";
 import "./ReadingView.css";
@@ -9,12 +11,27 @@ import "./ReadingView.css";
 interface ReadingViewProps {
   book: BookMetadata;
   onBack: () => void;
+  onOpenSettings: () => void;
 }
 
-export function ReadingView({ book, onBack }: ReadingViewProps) {
+export function ReadingView({ book, onBack, onOpenSettings }: ReadingViewProps) {
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [lang, setLang] = useState<TtsLang>("en");
-  const [playbackRate, setPlaybackRate] = useState(1);
+  const [voiceByLang, setVoiceByLang] = useState<Record<TtsLang, TtsVoice>>(
+    { ...TTS_DEFAULT_VOICE }
+  );
+  const [clientRate, setClientRate] = useState(1);
+
+  // Load persisted prefs on mount
+  useEffect(() => {
+    loadTtsPrefs().then((prefs) => {
+      setLang(prefs.lang);
+      setVoiceByLang(prefs.voiceByLang);
+      setClientRate(prefs.clientRate);
+    }).catch(() => {/* use defaults */});
+  }, []);
+
+  const voice = voiceByLang[lang];
 
   const {
     prev,
@@ -48,11 +65,13 @@ export function ReadingView({ book, onBack }: ReadingViewProps) {
     chunk: current,
     nextChunkIndex,
     lang,
-    playbackRate,
+    voice,
+    clientRate,
     enabled: ttsEnabled,
     onPageEnd: handlePageEnd,
   });
 
+  // Space bar shortcut
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === " " && ttsEnabled) {
@@ -67,6 +86,25 @@ export function ReadingView({ book, onBack }: ReadingViewProps) {
   const handleLangChange = (nextLang: TtsLang) => {
     setLang(nextLang);
     stopTts();
+    void updateTtsPrefs({ lang: nextLang });
+  };
+
+  const handleVoiceChange = (nextVoice: TtsVoice) => {
+    setVoiceByLang((prev) => ({ ...prev, [lang]: nextVoice }));
+    stopTts();
+    void setVoiceForLang(lang, nextVoice);
+  };
+
+  const handleClientRateChange = (rate: number) => {
+    setClientRate(rate);
+    void updateTtsPrefs({ clientRate: rate });
+  };
+
+  const handleToggleEnabled = () => {
+    setTtsEnabled((v) => {
+      if (v) stopTts();
+      return !v;
+    });
   };
 
   return (
@@ -76,21 +114,23 @@ export function ReadingView({ book, onBack }: ReadingViewProps) {
         currentChunk={current}
         chunkIndex={index}
         onBack={onBack}
+        onOpenSettings={onOpenSettings}
         tts={{
           enabled: ttsEnabled,
-          onToggleEnabled: () => {
-            setTtsEnabled((v) => {
-              if (v) stopTts();
-              return !v;
-            });
-          },
+          onToggleEnabled: handleToggleEnabled,
           isPlaying,
           isLoading: ttsLoading,
           onTogglePlay: togglePlay,
+          onStop: () => {
+            stopTts();
+            setTtsEnabled(false);
+          },
           lang,
           onLangChange: handleLangChange,
-          playbackRate,
-          onPlaybackRateChange: setPlaybackRate,
+          voice,
+          onVoiceChange: handleVoiceChange,
+          clientRate,
+          onClientRateChange: handleClientRateChange,
           error: ttsError,
         }}
       />
