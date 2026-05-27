@@ -3,16 +3,132 @@ import { spawn } from "node:child_process";
 import pdfParse from "pdf-parse";
 import { config } from "../../config.js";
 import type { ParseResult } from "../../types/book.js";
-import { chunkText } from "../chunker.js";
+import {
+  chunkText,
+  chunkTextWithChapterBoundaries,
+  mergeAndReindexChunkSections,
+} from "../chunker.js";
 import { filenameStem } from "../storage.js";
 
-interface AcademicExtractResult {
+interface PdfChapterPayload {
+  title: string;
   text: string;
-  title?: string;
-  author?: string;
 }
 
-export async function parsePdfBasic(
+interface PdfChapterDetectResult {
+  title?: string;
+  author?: string;
+  detectionMethod?: string;
+  warnings?: string[];
+  chapters: PdfChapterPayload[];
+}
+
+function spawnPdfChapterDetect(
+  filePath: string
+): Promise<PdfChapterDetectResult> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      config.pythonPath,
+      [config.pdfChapterScriptPath, filePath],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      reject(new Error("PDF chapter detection timed out"));
+    }, config.academicTimeoutMs);
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf-8");
+    });
+
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf-8");
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timer);
+      reject(
+        new Error(
+          `Failed to run PDF chapter script (${config.pythonPath}): ${err.message}`
+        )
+      );
+    });
+
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) return;
+
+      if (code !== 0) {
+        const detail = stderr.trim().slice(0, 500);
+        reject(
+          new Error(
+            `PDF chapter detection failed (exit ${code})${detail ? `: ${detail}` : ""}`
+          )
+        );
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(stdout) as PdfChapterDetectResult);
+      } catch (err) {
+        reject(
+          new Error(
+            `Invalid JSON from PDF chapter script: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      }
+    });
+  });
+}
+
+function buildChunksFromChapterSections(
+  chapters: PdfChapterPayload[]
+): ParseResult["chunks"] {
+  const sections = chapters
+    .filter((chapter) => chapter.text.trim())
+    .map((chapter) =>
+      chunkText(chapter.text, undefined, chapter.title.trim(), false)
+    );
+
+  return mergeAndReindexChunkSections(sections);
+}
+
+async function parsePdfWithChapterDetection(
+  filePath: string,
+  originalFilename: string
+): Promise<ParseResult> {
+  const parsed = await spawnPdfChapterDetect(filePath);
+
+  if (!parsed.chapters?.length) {
+    throw new Error("PDF chapter detector returned no chapters");
+  }
+
+  const title =
+    parsed.title?.trim() || filenameStem(originalFilename);
+  const author = parsed.author?.trim() || "Unknown Author";
+  const chunks = buildChunksFromChapterSections(parsed.chapters);
+
+  if (chunks.length === 0) {
+    throw new Error("PDF contains no extractable text");
+  }
+
+  if (parsed.warnings?.length) {
+    console.warn(
+      `PDF ingest warnings (${parsed.detectionMethod ?? "unknown"}):`,
+      parsed.warnings.join("; ")
+    );
+  }
+
+  return { title, author, chunks };
+}
+
+async function parsePdfFallback(
   filePath: string,
   originalFilename: string
 ): Promise<ParseResult> {
@@ -28,86 +144,32 @@ export async function parsePdfBasic(
     throw new Error("PDF contains no extractable text");
   }
 
+  console.warn(
+    "PDF chapter detection unavailable; using text-only fallback parser"
+  );
+
   return {
     title,
     author,
-    chunks: chunkText(fullText),
+    chunks: chunkTextWithChapterBoundaries(fullText, "Document"),
   };
 }
 
-export function parsePdfAcademic(
+export async function parsePdfBasic(
   filePath: string,
   originalFilename: string
 ): Promise<ParseResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(
-      config.pythonPath,
-      [config.academicScriptPath, filePath],
-      { stdio: ["ignore", "pipe", "pipe"] }
-    );
+  try {
+    return await parsePdfWithChapterDetection(filePath, originalFilename);
+  } catch (err) {
+    console.error("PDF chapter detection failed, using fallback:", err);
+    return parsePdfFallback(filePath, originalFilename);
+  }
+}
 
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      proc.kill("SIGTERM");
-      reject(new Error("Academic PDF extraction timed out"));
-    }, config.academicTimeoutMs);
-
-    proc.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf-8");
-    });
-
-    proc.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf-8");
-    });
-
-    proc.on("error", (err) => {
-      clearTimeout(timer);
-      reject(
-        new Error(
-          `Failed to run Python extractor (${config.pythonPath}): ${err.message}`
-        )
-      );
-    });
-
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      if (timedOut) return;
-
-      if (code !== 0) {
-        const detail = stderr.trim().slice(0, 500);
-        reject(
-          new Error(
-            `Academic PDF extraction failed (exit ${code})${detail ? `: ${detail}` : ""}`
-          )
-        );
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(stdout) as AcademicExtractResult;
-        const fullText = (parsed.text ?? "").trim();
-        if (!fullText) {
-          reject(new Error("Academic extractor returned empty text"));
-          return;
-        }
-
-        resolve({
-          title:
-            parsed.title?.trim() || filenameStem(originalFilename),
-          author: parsed.author?.trim() || "Unknown Author",
-          chunks: chunkText(fullText),
-        });
-      } catch (err) {
-        reject(
-          new Error(
-            `Invalid JSON from academic extractor: ${err instanceof Error ? err.message : String(err)}`
-          )
-        );
-      }
-    });
-  });
+export async function parsePdfAcademic(
+  filePath: string,
+  originalFilename: string
+): Promise<ParseResult> {
+  return parsePdfBasic(filePath, originalFilename);
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { chunkText } from "./chunker.js";
+import {
+  chunkText,
+  chunkTextWithChapterBoundaries,
+  isHeadingLike,
+  splitTextIntoParagraphs,
+} from "./chunker.js";
 
 describe("chunkText", () => {
   it("returns a single chunk for short text", () => {
@@ -18,6 +23,31 @@ describe("chunkText", () => {
       expect(chunk.text.length).toBeGreaterThan(0);
       expect(chunk.sentences.length).toBeGreaterThan(0);
     }
+  });
+
+  it("detects chapter-style headings", () => {
+    expect(isHeadingLike("Chapter 3: The Nature of Complexity")).toBe(true);
+    expect(isHeadingLike("This is a normal sentence.")).toBe(false);
+  });
+
+  it("splits PDF-style single newlines into blocks", () => {
+    const text =
+      "Chapter 1\nIntroduction\n\nFirst paragraph of body.\nSecond line.";
+    const blocks = splitTextIntoParagraphs(text);
+    expect(blocks[0]).toMatch(/Chapter 1/);
+    expect(blocks.some((b) => b.includes("First paragraph"))).toBe(true);
+  });
+
+  it("assigns chapter titles across PDF chunks", () => {
+    const body = "word ".repeat(400).trim();
+    const text = `Chapter 1\nIntro\n\n${body}\n\nChapter 2\nNext\n\n${body}`;
+    const chunks = chunkTextWithChapterBoundaries(text, "Start");
+    expect(chunks.some((c) => c.chapterTitle?.includes("Chapter 1"))).toBe(
+      true
+    );
+    expect(chunks.some((c) => c.chapterTitle?.includes("Chapter 2"))).toBe(
+      true
+    );
   });
 
   it("assigns sequential chunk indices", () => {

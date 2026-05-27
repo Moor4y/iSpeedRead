@@ -1,5 +1,8 @@
+import { useCallback, useEffect, useState } from "react";
 import { useTripleBuffer } from "../hooks/useTripleBuffer";
-import type { BookMetadata } from "../types";
+import { useTtsPlayback } from "../hooks/useTtsPlayback";
+import type { BookMetadata, TtsLang } from "../types";
+import { ReadingHeader } from "./ReadingHeader";
 import { TripleBufferViewport } from "./TripleBufferViewport";
 import "./ReadingView.css";
 
@@ -9,6 +12,10 @@ interface ReadingViewProps {
 }
 
 export function ReadingView({ book, onBack }: ReadingViewProps) {
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [lang, setLang] = useState<TtsLang>("en");
+  const [playbackRate, setPlaybackRate] = useState(1);
+
   const {
     prev,
     current,
@@ -23,19 +30,70 @@ export function ReadingView({ book, onBack }: ReadingViewProps) {
     reload,
   } = useTripleBuffer(book);
 
+  const nextChunkIndex = canGoNext ? index + 1 : null;
+
+  const handlePageEnd = useCallback(() => {
+    if (canGoNext) goNext();
+  }, [canGoNext, goNext]);
+
+  const {
+    activeSentenceIndex,
+    isPlaying,
+    isLoading: ttsLoading,
+    error: ttsError,
+    togglePlay,
+    stop: stopTts,
+  } = useTtsPlayback({
+    bookId: book.bookId,
+    chunk: current,
+    nextChunkIndex,
+    lang,
+    playbackRate,
+    enabled: ttsEnabled,
+    onPageEnd: handlePageEnd,
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " " && ttsEnabled) {
+        e.preventDefault();
+        togglePlay();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePlay, ttsEnabled]);
+
+  const handleLangChange = (nextLang: TtsLang) => {
+    setLang(nextLang);
+    stopTts();
+  };
+
   return (
     <div className="reading-view">
-      <header className="reading-view__header reading-column">
-        <button type="button" className="reading-view__back" onClick={onBack}>
-          ← Library
-        </button>
-        <div className="reading-view__meta">
-          <span className="reading-view__title">{book.title}</span>
-          <span className="reading-view__progress">
-            {index + 1} / {book.totalChunks}
-          </span>
-        </div>
-      </header>
+      <ReadingHeader
+        book={book}
+        currentChunk={current}
+        chunkIndex={index}
+        onBack={onBack}
+        tts={{
+          enabled: ttsEnabled,
+          onToggleEnabled: () => {
+            setTtsEnabled((v) => {
+              if (v) stopTts();
+              return !v;
+            });
+          },
+          isPlaying,
+          isLoading: ttsLoading,
+          onTogglePlay: togglePlay,
+          lang,
+          onLangChange: handleLangChange,
+          playbackRate,
+          onPlaybackRateChange: setPlaybackRate,
+          error: ttsError,
+        }}
+      />
 
       {error && (
         <div className="reading-view__error reading-column">
@@ -55,6 +113,8 @@ export function ReadingView({ book, onBack }: ReadingViewProps) {
         canGoNext={canGoNext}
         onPrev={goPrev}
         onNext={goNext}
+        activeSentenceIndex={activeSentenceIndex}
+        ttsCaptureSpace={ttsEnabled}
       />
     </div>
   );

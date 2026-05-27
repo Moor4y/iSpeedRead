@@ -7,8 +7,8 @@
 }
 
 .catalog__header {
-  padding-top: max(32px, env(safe-area-inset-top));
-  padding-bottom: 24px;
+  padding-top: max(40px, env(safe-area-inset-top));
+  padding-bottom: 28px;
 }
 
 .catalog__title {
@@ -57,8 +57,8 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 20px 0;
-  border-bottom: 1px solid rgba(142, 142, 147, 0.2);
+  padding: 24px 0;
+  border-bottom: 1px solid rgba(142, 142, 147, 0.15);
 }
 
 .catalog__item:active .catalog__item-title {

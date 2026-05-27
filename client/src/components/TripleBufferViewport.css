@@ -26,6 +26,12 @@
   padding-block: clamp(48px, 12vh, 96px) clamp(80px, 18vh, 120px);
 }
 
+@media (orientation: landscape) {
+  .triple-buffer__panel {
+    padding-block: 24px 48px;
+  }
+}
+
 .chunk-panel__status {
   opacity: 0.5;
   text-align: center;

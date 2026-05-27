@@ -10,9 +10,15 @@ declare module "epub2" {
     author?: string;
   }
 
+  interface EpubTocEntry {
+    title?: string;
+    id?: string;
+  }
+
   export default class EPub {
     metadata: EpubMetadata;
     flow: EpubFlowItem[];
+    toc?: EpubTocEntry[];
     constructor(filePath: string);
     parse(): void;
     on(event: "end", listener: () => void): this;

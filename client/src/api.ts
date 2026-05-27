@@ -1,4 +1,4 @@
-import type { BookMetadata, Chunk } from "./types";
+import type { BookMetadata, Chunk, TtsLang, TtsPayload } from "./types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(
   /\/$/,
@@ -32,6 +32,16 @@ export async function fetchChunk(
   index: number
 ): Promise<Chunk> {
   return fetchJson<Chunk>(apiUrl(`/api/books/${bookId}/chunk/${index}`));
+}
+
+export async function fetchChunkTts(
+  bookId: string,
+  index: number,
+  lang: TtsLang
+): Promise<TtsPayload> {
+  return fetchJson<TtsPayload>(
+    apiUrl(`/api/books/${bookId}/chunk/${index}/tts?lang=${lang}`)
+  );
 }
 
 export function getApiBaseDisplay(): string {

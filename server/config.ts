@@ -23,7 +23,22 @@ export const config = {
     "scripts",
     "extract_academic.py"
   ),
+  pdfChapterScriptPath: path.resolve(
+    projectRoot,
+    "scripts",
+    "pdf_chapter_detect.py"
+  ),
   chunkWordTarget: Number(process.env.CHUNK_WORD_TARGET) || 600,
   academicTimeoutMs: Number(process.env.ACADEMIC_TIMEOUT_MS) || 120_000,
   corsOrigin: process.env.CORS_ORIGIN || "*",
+  ttsCacheDir: path.resolve(
+    projectRoot,
+    process.env.TTS_CACHE_DIR || "library/tts"
+  ),
+  ttsScriptPath: path.resolve(
+    projectRoot,
+    "scripts",
+    "synthesize_tts.py"
+  ),
+  ttsTimeoutMs: Number(process.env.TTS_TIMEOUT_MS) || 300_000,
 };

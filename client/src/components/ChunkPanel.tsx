@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { Chunk } from "../types";
 
 interface ChunkPanelProps {
@@ -12,6 +13,16 @@ export function ChunkPanel({
   loading,
   activeSentenceIndex = null,
 }: ChunkPanelProps) {
+  const sentenceRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+
+  useEffect(() => {
+    if (activeSentenceIndex === null || activeSentenceIndex === undefined) {
+      return;
+    }
+    const el = sentenceRefs.current[activeSentenceIndex];
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [activeSentenceIndex, chunk?.index]);
+
   if (loading && !chunk) {
     return (
       <div className="reading-column chunk-panel">
@@ -39,6 +50,9 @@ export function ChunkPanel({
         return (
           <p
             key={`${chunk.index}-${i}`}
+            ref={(el) => {
+              sentenceRefs.current[i] = el;
+            }}
             className={[
               "sentence",
               isFocal ? "sentence--focal" : "",

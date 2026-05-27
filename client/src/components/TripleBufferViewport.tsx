@@ -14,6 +14,9 @@ interface TripleBufferViewportProps {
   canGoNext: boolean;
   onPrev: () => void;
   onNext: () => void;
+  activeSentenceIndex?: number | null;
+  /** When true, space bar is reserved for TTS (handled in ReadingView). */
+  ttsCaptureSpace?: boolean;
 }
 
 /** Percent of track height (3 panels); -33.333% centers the current panel. */
@@ -28,6 +31,8 @@ export function TripleBufferViewport({
   canGoNext,
   onPrev,
   onNext,
+  activeSentenceIndex = null,
+  ttsCaptureSpace = false,
 }: TripleBufferViewportProps) {
   const [offset, setOffset] = useState<TrackOffset>(-33.333);
   const [animating, setAnimating] = useState(false);
@@ -65,7 +70,10 @@ export function TripleBufferViewport({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === " ") {
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault();
+        runSlide("next", onNext);
+      } else if (e.key === " " && !ttsCaptureSpace) {
         e.preventDefault();
         runSlide("next", onNext);
       } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
@@ -75,7 +83,7 @@ export function TripleBufferViewport({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onNext, onPrev, runSlide]);
+  }, [onNext, onPrev, runSlide, ttsCaptureSpace]);
 
   const touchStartY = useRef<number | null>(null);
 
@@ -110,7 +118,11 @@ export function TripleBufferViewport({
           className="triple-buffer__panel"
           aria-hidden={offset !== -33.333}
         >
-          <ChunkPanel chunk={current} loading={loading && !current} />
+          <ChunkPanel
+            chunk={current}
+            loading={loading && !current}
+            activeSentenceIndex={activeSentenceIndex}
+          />
         </section>
         <section
           className="triple-buffer__panel"

@@ -20,6 +20,16 @@ function readSchema(): string {
   return fs.readFileSync(schemaFile, "utf-8");
 }
 
+function runMigrations(database: Database.Database): void {
+  const columns = database
+    .prepare("PRAGMA table_info(chunks)")
+    .all() as { name: string }[];
+
+  if (!columns.some((col) => col.name === "chapter_title")) {
+    database.exec("ALTER TABLE chunks ADD COLUMN chapter_title TEXT");
+  }
+}
+
 export function getDb(): Database.Database {
   if (db) return db;
 
@@ -28,6 +38,7 @@ export function getDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(readSchema());
+  runMigrations(db);
   return db;
 }
 
@@ -54,8 +65,8 @@ export function insertBookWithChunks(
     VALUES (@id, @title, @author, @sourceFilename, @sourceType, @totalChunks)
   `);
   const insertChunk = database.prepare(`
-    INSERT INTO chunks (book_id, chunk_index, text, sentences_json)
-    VALUES (@bookId, @chunkIndex, @text, @sentencesJson)
+    INSERT INTO chunks (book_id, chunk_index, text, sentences_json, chapter_title)
+    VALUES (@bookId, @chunkIndex, @text, @sentencesJson, @chapterTitle)
   `);
 
   const transaction = database.transaction(() => {
@@ -74,6 +85,7 @@ export function insertBookWithChunks(
         chunkIndex: chunk.index,
         text: chunk.text,
         sentencesJson: JSON.stringify(chunk.sentences),
+        chapterTitle: chunk.chapterTitle ?? null,
       });
     }
   });
@@ -111,11 +123,16 @@ export function getChunk(
   const database = getDb();
   const row = database
     .prepare(
-      `SELECT chunk_index, text, sentences_json FROM chunks
+      `SELECT chunk_index, text, sentences_json, chapter_title FROM chunks
        WHERE book_id = ? AND chunk_index = ?`
     )
     .get(bookId, chunkIndex) as
-    | { chunk_index: number; text: string; sentences_json: string }
+    | {
+        chunk_index: number;
+        text: string;
+        sentences_json: string;
+        chapter_title: string | null;
+      }
     | undefined;
 
   if (!row) return undefined;
@@ -124,5 +141,6 @@ export function getChunk(
     index: row.chunk_index,
     text: row.text,
     sentences: JSON.parse(row.sentences_json) as string[],
+    chapterTitle: row.chapter_title,
   };
 }

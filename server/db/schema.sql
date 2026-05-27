@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS chunks (
   chunk_index INTEGER NOT NULL,
   text TEXT NOT NULL,
   sentences_json TEXT NOT NULL,
+  chapter_title TEXT,
   PRIMARY KEY (book_id, chunk_index),
   FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
 );

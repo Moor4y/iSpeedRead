@@ -1,6 +1,7 @@
 import localforage from "localforage";
 import { fetchChunk } from "./api";
 import type { Chunk, ReaderCache } from "./types";
+import { READER_CACHE_VERSION } from "./types";
 
 const CACHE_KEY = "ispeedread-reader-cache";
 const LOOKAHEAD_CHUNKS = 5;
@@ -11,7 +12,12 @@ const store = localforage.createInstance({
 });
 
 export async function loadReaderCache(): Promise<ReaderCache | null> {
-  return store.getItem<ReaderCache>(CACHE_KEY);
+  const cache = await store.getItem<ReaderCache>(CACHE_KEY);
+  if (!cache) return null;
+  if (cache.version !== READER_CACHE_VERSION) {
+    return null;
+  }
+  return cache;
 }
 
 export async function saveReaderCache(cache: ReaderCache): Promise<void> {
@@ -35,7 +41,9 @@ export async function ensureChunk(
   if (index < 0 || index >= totalChunks) return null;
 
   const cached = await getCachedChunk(bookId, index);
-  if (cached) return cached;
+  if (cached && "chapterTitle" in cached) {
+    return cached;
+  }
 
   try {
     const chunk = await fetchChunk(bookId, index);
@@ -52,10 +60,13 @@ export async function mergeChunkIntoCache(
   chunk: Chunk
 ): Promise<void> {
   const existing = (await loadReaderCache()) ?? {
+    version: READER_CACHE_VERSION,
     activeBookId: bookId,
     checkpointIndex: chunk.index,
     cachedChunks: {},
   };
+
+  existing.version = READER_CACHE_VERSION;
 
   if (existing.activeBookId !== bookId) {
     existing.activeBookId = bookId;
@@ -71,11 +82,13 @@ export async function setCheckpoint(
   checkpointIndex: number
 ): Promise<void> {
   const existing = (await loadReaderCache()) ?? {
+    version: READER_CACHE_VERSION,
     activeBookId: bookId,
     checkpointIndex,
     cachedChunks: {},
   };
 
+  existing.version = READER_CACHE_VERSION;
   existing.activeBookId = bookId;
   existing.checkpointIndex = checkpointIndex;
   await saveReaderCache(existing);
@@ -108,6 +121,7 @@ export async function initBookCache(
   startIndex: number
 ): Promise<void> {
   await saveReaderCache({
+    version: READER_CACHE_VERSION,
     activeBookId: bookId,
     checkpointIndex: startIndex,
     cachedChunks: {},

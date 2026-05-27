@@ -4,6 +4,7 @@ export interface ParsedChunk {
   index: number;
   text: string;
   sentences: string[];
+  chapterTitle?: string | null;
 }
 
 export interface ParseResult {
@@ -40,6 +41,7 @@ export interface ChunkDto {
   index: number;
   text: string;
   sentences: string[];
+  chapterTitle: string | null;
 }
 
 export interface UploadResponseDto {

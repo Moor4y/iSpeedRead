@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch server/index.ts",
+    "dev:client": "npm run dev --prefix client",
     "build": "tsc",
+    "build:client": "npm run build --prefix client",
     "start": "node dist/server/index.js",
     "test": "vitest run"
   },
@@ -14,7 +16,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^11.9.1",
+    "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
     "epub2": "^3.0.2",
     "express": "^5.1.0",
