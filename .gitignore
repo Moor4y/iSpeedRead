@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+data/library.db
+data/library.db-*
+library/uploads/*
+!library/uploads/.gitkeep
+!library/.gitkeep
