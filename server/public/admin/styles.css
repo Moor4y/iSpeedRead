@@ -1,0 +1,171 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  background: #0c0c0d;
+  color: #ececef;
+}
+
+.page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  display: grid;
+  gap: 16px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.header p {
+  margin: 8px 0 0;
+  color: #aaaaaf;
+}
+
+.panel {
+  border: 1px solid #2b2c31;
+  border-radius: 10px;
+  padding: 14px;
+  background: #121317;
+}
+
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dropzone {
+  border: 1px dashed #5a5d67;
+  border-radius: 8px;
+  min-height: 120px;
+  padding: 24px 16px;
+  color: #b7bac4;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.dropzone.dragover {
+  border-color: #8bb8ff;
+  background: #182033;
+}
+
+#fileInput,
+#folderInput {
+  display: none;
+}
+
+.row {
+  margin-top: 10px;
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #b7bac4;
+}
+
+.checkbox input {
+  accent-color: #7ea7ff;
+}
+
+button,
+select {
+  border: 1px solid #3f4450;
+  border-radius: 8px;
+  background: #1b1d24;
+  color: #ececef;
+  padding: 6px 10px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: #7ea7ff;
+}
+
+.muted {
+  color: #9498a3;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.card {
+  border: 1px solid #2f3340;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.card .title {
+  font-weight: 600;
+}
+
+.meta {
+  color: #a3a7b2;
+  font-size: 0.85rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.status {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #3e434f;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.preview {
+  margin: 0;
+  white-space: pre-wrap;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid #2f3340;
+  border-radius: 8px;
+  padding: 10px;
+  background: #0f1116;
+}

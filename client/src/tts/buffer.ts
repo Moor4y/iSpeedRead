@@ -67,7 +67,21 @@ export function findActiveSentenceIndex(
   timeline: TtsPayload["timeline"],
   currentTimeSec: number
 ): number | null {
+  if (!timeline.length) return null;
+
   const ms = currentTimeSec * 1000;
-  const marker = timeline.find((m) => ms >= m.startMs && ms < m.endMs);
-  return marker?.sentenceIndex ?? null;
+  const exact = timeline.find((m) => ms >= m.startMs && ms < m.endMs);
+  if (exact) return exact.sentenceIndex;
+
+  // Fallback for clock drift/boundary gaps: keep nearest prior sentence active
+  // so there is always a clear focal line while playback is running.
+  let nearestPrior = timeline[0];
+  for (const marker of timeline) {
+    if (marker.startMs <= ms) {
+      nearestPrior = marker;
+      continue;
+    }
+    break;
+  }
+  return nearestPrior.sentenceIndex;
 }

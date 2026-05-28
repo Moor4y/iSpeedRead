@@ -27,6 +27,7 @@ describe("chunkText", () => {
 
   it("detects chapter-style headings", () => {
     expect(isHeadingLike("Chapter 3: The Nature of Complexity")).toBe(true);
+    expect(isHeadingLike("第十二章 复杂系统")).toBe(true);
     expect(isHeadingLike("This is a normal sentence.")).toBe(false);
   });
 
@@ -57,5 +58,12 @@ describe("chunkText", () => {
     chunks.forEach((chunk, i) => {
       expect(chunk.index).toBe(i);
     });
+  });
+
+  it("splits CJK text into multiple chunks without spaces", () => {
+    const paragraph = "这是一个用于测试的中文句子。".repeat(80);
+    const fullText = `${paragraph}\n\n${paragraph}`;
+    const chunks = chunkText(fullText, 120);
+    expect(chunks.length).toBeGreaterThan(1);
   });
 });

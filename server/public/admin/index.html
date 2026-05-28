@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iSpeedRead Admin</title>
+    <link rel="stylesheet" href="/admin/static/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <h1>iSpeedRead Admin</h1>
+        <p>PDF intake, conversion, promotion, and manual versioning.</p>
+      </header>
+
+      <section class="panel">
+        <h2>Upload PDF</h2>
+        <div id="dropzone" class="dropzone">
+          Drop PDF files here, or click to select files (folder via button below)
+          <input id="fileInput" type="file" accept="application/pdf,.pdf" multiple />
+          <input id="folderInput" type="file" multiple webkitdirectory directory />
+        </div>
+        <div class="row">
+          <button id="folderPickBtn" type="button">Choose Folder</button>
+          <label>
+            Language
+            <select id="uploadLang">
+              <option value="auto">Auto detect</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+          <label class="checkbox">
+            <input id="strictOcrCleanup" type="checkbox" />
+            Strict OCR cleanup
+          </label>
+          <button id="uploadBtn">Upload</button>
+        </div>
+        <p id="uploadStatus" class="muted"></p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Workbench</h2>
+          <div class="header-actions">
+            <button id="convertAllBtn" type="button">Convert All</button>
+            <button id="sendAllBtn" type="button">Send All Converted</button>
+            <button id="refreshWorkbench" type="button">Refresh</button>
+          </div>
+        </div>
+        <div id="workbenchList" class="list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Preview</h2>
+        <pre id="previewPane" class="preview muted">Select an item and load preview.</pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Library</h2>
+          <button id="refreshLibrary">Refresh</button>
+        </div>
+        <div id="libraryList" class="list"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/admin/static/app.js"></script>
+  </body>
+</html>

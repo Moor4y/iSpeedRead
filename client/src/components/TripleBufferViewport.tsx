@@ -36,7 +36,38 @@ export function TripleBufferViewport({
 }: TripleBufferViewportProps) {
   const [offset, setOffset] = useState<TrackOffset>(-33.333);
   const [animating, setAnimating] = useState(false);
+  const [manualSentenceIndex, setManualSentenceIndex] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
+  const currentPanelRef = useRef<HTMLElement | null>(null);
+  const slideTimerRef = useRef<number | null>(null);
+  const pendingSentenceEdgeRef = useRef<"first" | "last" | null>(null);
+
+  const clearSlideTimer = () => {
+    if (slideTimerRef.current !== null) {
+      window.clearTimeout(slideTimerRef.current);
+      slideTimerRef.current = null;
+    }
+  };
+
+  const getCurrentSentences = useCallback((): HTMLParagraphElement[] => {
+    const panel = currentPanelRef.current;
+    if (!panel) return [];
+    return Array.from(panel.querySelectorAll<HTMLParagraphElement>(".sentence"));
+  }, []);
+
+  const scrollSentenceIntoView = useCallback(
+    (index: number, behavior: ScrollBehavior = "smooth"): boolean => {
+      const sentences = getCurrentSentences();
+      if (!sentences.length) return false;
+      const clamped = Math.max(0, Math.min(index, sentences.length - 1));
+      const target = sentences[clamped];
+      if (!target) return false;
+      target.scrollIntoView({ block: "center", behavior });
+      setManualSentenceIndex(clamped);
+      return true;
+    },
+    [getCurrentSentences]
+  );
 
   const runSlide = useCallback(
     (direction: "next" | "prev", action: () => void) => {
@@ -55,50 +86,157 @@ export function TripleBufferViewport({
         return;
       }
 
-      const onEnd = (ev: TransitionEvent) => {
-        if (ev.propertyName !== "transform") return;
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearSlideTimer();
         track.removeEventListener("transitionend", onEnd);
         action();
         setOffset(-33.333);
         setAnimating(false);
       };
+      const onEnd = (ev: TransitionEvent) => {
+        if (ev.propertyName !== "transform") return;
+        finish();
+      };
 
       track.addEventListener("transitionend", onEnd);
+
+      // Fallback: some browsers/timing paths can miss transitionend.
+      // Keep navigation responsive by completing the slide anyway.
+      slideTimerRef.current = window.setTimeout(finish, 260);
     },
-    [animating, canGoNext, canGoPrev]
+    [animating, canGoNext, canGoPrev, clearSlideTimer]
+  );
+
+  const ttsActive = activeSentenceIndex !== null && activeSentenceIndex !== undefined;
+
+  const navigateByLine = useCallback(
+    (direction: "next" | "prev") => {
+      // While TTS is actively tracking sentences, keep controls chunk-based
+      // so users can reliably move the currently playing audio chunk.
+      if (ttsActive) {
+        if (direction === "next") runSlide("next", onNext);
+        else runSlide("prev", onPrev);
+        return;
+      }
+
+      const sentences = getCurrentSentences();
+      if (!sentences.length) {
+        if (direction === "next") runSlide("next", onNext);
+        else runSlide("prev", onPrev);
+        return;
+      }
+
+      const base = Math.max(0, Math.min(manualSentenceIndex, sentences.length - 1));
+      const nextIndex = direction === "next" ? base + 1 : base - 1;
+
+      if (nextIndex >= 0 && nextIndex < sentences.length) {
+        scrollSentenceIntoView(nextIndex);
+        return;
+      }
+
+      if (direction === "next" && canGoNext) {
+        pendingSentenceEdgeRef.current = "first";
+        runSlide("next", onNext);
+        return;
+      }
+
+      if (direction === "prev" && canGoPrev) {
+        pendingSentenceEdgeRef.current = "last";
+        runSlide("prev", onPrev);
+      }
+    },
+    [
+      canGoNext,
+      canGoPrev,
+      getCurrentSentences,
+      manualSentenceIndex,
+      onNext,
+      onPrev,
+      runSlide,
+      scrollSentenceIntoView,
+      ttsActive,
+    ]
   );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown" || e.key === "ArrowRight") {
         e.preventDefault();
-        runSlide("next", onNext);
+        navigateByLine("next");
       } else if (e.key === " " && !ttsCaptureSpace) {
         e.preventDefault();
-        runSlide("next", onNext);
+        navigateByLine("next");
       } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
         e.preventDefault();
-        runSlide("prev", onPrev);
+        navigateByLine("prev");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onNext, onPrev, runSlide, ttsCaptureSpace]);
+  }, [navigateByLine, ttsCaptureSpace]);
 
   const touchStartY = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
 
   const onTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
+    touchStartX.current = e.touches[0].clientX;
   };
 
   const onTouchEnd = (e: React.TouchEvent) => {
     if (touchStartY.current === null) return;
-    const delta = e.changedTouches[0].clientY - touchStartY.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    const deltaX =
+      touchStartX.current === null
+        ? 0
+        : e.changedTouches[0].clientX - touchStartX.current;
     touchStartY.current = null;
-    if (Math.abs(delta) < 48) return;
-    if (delta < 0) runSlide("next", onNext);
-    else runSlide("prev", onPrev);
+    touchStartX.current = null;
+
+    if (Math.abs(deltaY) >= 48 && Math.abs(deltaY) > Math.abs(deltaX)) {
+      if (deltaY < 0) navigateByLine("next");
+      else navigateByLine("prev");
+    }
   };
+
+  useEffect(() => {
+    return () => {
+      clearSlideTimer();
+    };
+  }, [clearSlideTimer]);
+
+  useEffect(() => {
+    if (activeSentenceIndex === null || activeSentenceIndex === undefined) return;
+    setManualSentenceIndex(activeSentenceIndex);
+  }, [activeSentenceIndex]);
+
+  useEffect(() => {
+    const edge = pendingSentenceEdgeRef.current;
+    if (!edge) return;
+    pendingSentenceEdgeRef.current = null;
+
+    window.requestAnimationFrame(() => {
+      const sentences = getCurrentSentences();
+      if (!sentences.length) return;
+      const idx = edge === "first" ? 0 : sentences.length - 1;
+      scrollSentenceIntoView(idx, "auto");
+    });
+  }, [current?.index, getCurrentSentences, scrollSentenceIntoView]);
+
+  const sentenceCount = current?.sentences.length ?? 0;
+  const clampedManualIndex =
+    sentenceCount > 0
+      ? Math.max(0, Math.min(manualSentenceIndex, sentenceCount - 1))
+      : 0;
+  const canStepPrev = ttsActive
+    ? canGoPrev
+    : sentenceCount > 0 && (clampedManualIndex > 0 || canGoPrev);
+  const canStepNext = ttsActive
+    ? canGoNext
+    : sentenceCount > 0 && (clampedManualIndex < sentenceCount - 1 || canGoNext);
 
   return (
     <div
@@ -117,6 +255,9 @@ export function TripleBufferViewport({
         <section
           className="triple-buffer__panel"
           aria-hidden={offset !== -33.333}
+          ref={(el) => {
+            currentPanelRef.current = el;
+          }}
         >
           <ChunkPanel
             chunk={current}
@@ -136,18 +277,18 @@ export function TripleBufferViewport({
         <button
           type="button"
           className="triple-buffer__nav"
-          disabled={!canGoPrev || animating}
-          onClick={() => runSlide("prev", onPrev)}
-          aria-label="Previous page"
+          disabled={!canStepPrev || animating}
+          onClick={() => navigateByLine("prev")}
+          aria-label="Previous line"
         >
           ↑
         </button>
         <button
           type="button"
           className="triple-buffer__nav"
-          disabled={!canGoNext || animating}
-          onClick={() => runSlide("next", onNext)}
-          aria-label="Next page"
+          disabled={!canStepNext || animating}
+          onClick={() => navigateByLine("next")}
+          aria-label="Next line"
         >
           ↓
         </button>

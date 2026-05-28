@@ -5,9 +5,14 @@ import cors from "cors";
 import express from "express";
 import { config } from "./config.js";
 import { getDb, closeDb } from "./db/client.js";
+import { adminRouter } from "./routes/admin.js";
 import { booksRouter } from "./routes/books.js";
 import { uploadRouter } from "./routes/upload.js";
-import { ensureUploadDir, ensureBooksDir } from "./services/storage.js";
+import {
+  ensureUploadDir,
+  ensureBooksDir,
+  ensureWorkbenchDir,
+} from "./services/storage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Walk up from __dirname until we find the project root (contains package.json).
@@ -23,6 +28,7 @@ function findProjectRoot(start: string): string {
 }
 const projectRoot = findProjectRoot(__dirname);
 const clientDist = path.join(projectRoot, "client", "dist");
+const adminPublicDir = path.join(projectRoot, "server", "public", "admin");
 
 const app = express();
 
@@ -36,6 +42,7 @@ app.use(express.urlencoded({ extended: true }));
 
 ensureUploadDir();
 ensureBooksDir();
+ensureWorkbenchDir();
 getDb();
 
 app.get("/health", (_req, res) => {
@@ -44,6 +51,14 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/upload", uploadRouter);
 app.use("/api/books", booksRouter);
+app.use("/api/admin", adminRouter);
+
+if (fs.existsSync(adminPublicDir)) {
+  app.use("/admin/static", express.static(adminPublicDir));
+  app.get("/admin", (_req, res) => {
+    res.sendFile(path.join(adminPublicDir, "index.html"));
+  });
+}
 
 // Serve the built PWA client for all non-API routes.
 // In dev mode the client/dist folder may not exist yet — skip gracefully.

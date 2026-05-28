@@ -13,6 +13,14 @@ interface PythonTtsResult {
   durationMs: number;
 }
 
+interface FailureEntry {
+  message: string;
+  expiresAt: number;
+}
+
+const FAILURE_TTL_MS = 45_000;
+const synthesisFailureCache = new Map<string, FailureEntry>();
+
 /** Validate that a voice string is one of the known voices for the given lang. */
 export function resolveVoice(lang: TtsLang, voiceParam?: string): TtsVoice {
   if (voiceParam) {
@@ -34,6 +42,34 @@ function ttsCachePath(
   voice: TtsVoice
 ): string {
   return path.join(config.ttsCacheDir, bookId, `${chunkIndex}_${voice}.json`);
+}
+
+function ttsFailureKey(bookId: string, chunkIndex: number, voice: TtsVoice): string {
+  return `${bookId}:${chunkIndex}:${voice}`;
+}
+
+function countMatches(text: string, re: RegExp): number {
+  return text.match(re)?.length ?? 0;
+}
+
+function isSpeakableSentence(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (trimmed.length < 2) return false;
+
+  const len = Math.max(1, Array.from(trimmed).length);
+  const cjk = countMatches(trimmed, /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu);
+  const letters = countMatches(trimmed, /[\p{L}\p{N}]/gu);
+  const symbols = countMatches(trimmed, /[^\p{L}\p{N}\s]/gu);
+  const cjkRatio = cjk / len;
+  const letterRatio = letters / len;
+  const symbolRatio = symbols / len;
+
+  // Reject obvious OCR noise blocks and symbol soup.
+  if (symbolRatio > 0.55 && letterRatio < 0.35) return false;
+  if (cjkRatio < 0.05 && letterRatio < 0.2) return false;
+  if (/^[^\p{L}\p{N}]{3,}$/u.test(trimmed)) return false;
+  return true;
 }
 
 function ensureTtsCacheDir(bookId: string): void {
@@ -130,9 +166,38 @@ export async function synthesizeChunkTts(
   const cached = readTtsCache(bookId, chunkIndex, voice);
   if (cached) return cached;
 
+  const failureKey = ttsFailureKey(bookId, chunkIndex, voice);
+  const cachedFailure = synthesisFailureCache.get(failureKey);
+  if (cachedFailure && cachedFailure.expiresAt > Date.now()) {
+    throw new Error(cachedFailure.message);
+  }
+
+  const speakableCount = sentences.filter((sentence) => isSpeakableSentence(sentence)).length;
+  if (speakableCount === 0) {
+    const message = "Chunk has no speakable OCR text for TTS";
+    synthesisFailureCache.set(failureKey, {
+      message,
+      expiresAt: Date.now() + FAILURE_TTL_MS,
+    });
+    throw new Error(message);
+  }
+
   // Bake 2× speed into the server-side synthesis so the client only needs
   // to apply up to 2× locally to reach a combined 4× maximum.
-  const result = await spawnTtsPython(sentences, voice, TTS_SERVER_RATE);
+  let result: PythonTtsResult;
+  try {
+    result = await spawnTtsPython(sentences, voice, TTS_SERVER_RATE);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "TTS synthesis failed";
+    synthesisFailureCache.set(failureKey, {
+      message,
+      expiresAt: Date.now() + FAILURE_TTL_MS,
+    });
+    throw err;
+  }
+
+  synthesisFailureCache.delete(failureKey);
 
   const payload: TtsPayload = {
     bookId,

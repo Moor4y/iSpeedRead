@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import sys
+import argparse
 from dataclasses import dataclass
 from enum import Enum
 from typing import Pattern
@@ -32,6 +33,14 @@ DEFAULT_HEADING_PATTERNS: list[str] = [
     r"^PART\s+\d+",
     r"^Book\s+\d+",
     r"^Section\s+\d+",
+]
+
+ZH_HEADING_PATTERNS: list[str] = [
+    r"^第[\d一二三四五六七八九十百千两零]+[章节回部卷篇]",
+    r"^第[\d一二三四五六七八九十百千两零]+章",
+    r"^序章",
+    r"^前言",
+    r"^引言",
 ]
 
 
@@ -49,8 +58,26 @@ class ChapterSpan:
     index: int = 0
 
 
-def compile_patterns(patterns: list[str] | None = None) -> list[Pattern[str]]:
+def detect_language(doc, page_limit: int = 10) -> str:
+    sample_parts: list[str] = []
+    limit = min(page_limit, doc.page_count)
+    for page_index in range(limit):
+        sample_parts.append(doc[page_index].get_text("text"))
+    sample = "".join(sample_parts)
+    if not sample:
+        return "en"
+
+    total_chars = len(sample)
+    han_chars = len(re.findall(r"[\u3400-\u9fff]", sample))
+    return "zh" if total_chars and (han_chars / total_chars) >= 0.1 else "en"
+
+
+def compile_patterns(
+    patterns: list[str] | None = None, lang: str = "en"
+) -> list[Pattern[str]]:
     source = patterns if patterns is not None else DEFAULT_HEADING_PATTERNS
+    if patterns is None and lang == "zh":
+        source = source + ZH_HEADING_PATTERNS
     return [re.compile(p, re.IGNORECASE | re.MULTILINE) for p in source]
 
 
@@ -114,8 +141,13 @@ def toc_to_chapters(doc, chapter_level: int = 1, min_chapters: int = 2) -> list[
     return _dedupe_overlapping(chapters)
 
 
-def find_heading_pages(doc, patterns: list[Pattern[str]] | None = None, min_chapters: int = 2):
-    compiled = patterns if patterns is not None else compile_patterns()
+def find_heading_pages(
+    doc,
+    patterns: list[Pattern[str]] | None = None,
+    min_chapters: int = 2,
+    lang: str = "en",
+):
+    compiled = patterns if patterns is not None else compile_patterns(lang=lang)
     hits: list[tuple[str, int]] = []
 
     for page_index in range(doc.page_count):
@@ -137,8 +169,13 @@ def find_heading_pages(doc, patterns: list[Pattern[str]] | None = None, min_chap
     return deduped
 
 
-def headings_to_chapters(doc, patterns: list[Pattern[str]] | None = None, min_chapters: int = 2) -> list[ChapterSpan]:
-    hits = find_heading_pages(doc, patterns=patterns, min_chapters=min_chapters)
+def headings_to_chapters(
+    doc,
+    patterns: list[Pattern[str]] | None = None,
+    min_chapters: int = 2,
+    lang: str = "en",
+) -> list[ChapterSpan]:
+    hits = find_heading_pages(doc, patterns=patterns, min_chapters=min_chapters, lang=lang)
     if len(hits) < min_chapters:
         return []
 
@@ -158,13 +195,13 @@ def headings_to_chapters(doc, patterns: list[Pattern[str]] | None = None, min_ch
     return chapters
 
 
-def detect_chapters(doc, chapter_level: int = 1, min_chapters: int = 2):
+def detect_chapters(doc, chapter_level: int = 1, min_chapters: int = 2, lang: str = "en"):
     warnings: list[str] = []
     chapters = toc_to_chapters(doc, chapter_level=chapter_level, min_chapters=min_chapters)
     if len(chapters) >= min_chapters:
         return chapters, DetectionMethod.BOOKMARKS, warnings
 
-    chapters = headings_to_chapters(doc, min_chapters=min_chapters)
+    chapters = headings_to_chapters(doc, min_chapters=min_chapters, lang=lang)
     if len(chapters) >= min_chapters:
         warnings.append("No usable bookmarks; used heading detection.")
         return chapters, DetectionMethod.HEADINGS, warnings
@@ -189,13 +226,14 @@ def extract_chapter_text(doc, chapter: ChapterSpan) -> str:
     return "\n\n".join(parts)
 
 
-def parse_pdf(pdf_path: str) -> dict:
+def parse_pdf(pdf_path: str, lang: str = "en") -> dict:
     import fitz
 
     doc = fitz.open(pdf_path)
     try:
         meta = doc.metadata or {}
-        chapters, method, warnings = detect_chapters(doc)
+        detected_lang = detect_language(doc) if lang == "auto" else lang
+        chapters, method, warnings = detect_chapters(doc, lang=detected_lang)
 
         chapter_payloads = []
         for chapter in chapters:
@@ -214,6 +252,7 @@ def parse_pdf(pdf_path: str) -> dict:
         return {
             "title": (meta.get("title") or "").strip(),
             "author": (meta.get("author") or "").strip(),
+            "detectedLang": detected_lang,
             "detectionMethod": method.value,
             "warnings": warnings,
             "chapters": chapter_payloads,
@@ -223,12 +262,13 @@ def parse_pdf(pdf_path: str) -> dict:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("Usage: pdf_chapter_detect.py <pdf_path>", file=sys.stderr)
-        return 1
+    parser = argparse.ArgumentParser(description="Detect chapters from PDF")
+    parser.add_argument("pdf_path")
+    parser.add_argument("--lang", choices=["en", "zh", "auto"], default="auto")
+    args = parser.parse_args()
 
     try:
-        result = parse_pdf(sys.argv[1])
+        result = parse_pdf(args.pdf_path, args.lang)
     except ImportError:
         print("PyMuPDF not installed. Run: pip install pymupdf", file=sys.stderr)
         return 1

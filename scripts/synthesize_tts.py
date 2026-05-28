@@ -13,6 +13,7 @@ import asyncio
 import base64
 import io
 import json
+import re
 import sys
 
 
@@ -27,6 +28,29 @@ async def synthesize_sentence(text: str, voice: str, rate: str) -> bytes:
     return b"".join(parts)
 
 
+def looks_speakable(text: str) -> bool:
+    t = (text or "").strip()
+    if len(t) < 2:
+        return False
+
+    total = max(1, len(t))
+    cjk = len(re.findall(r"[\u3400-\u9fff\u3040-\u30ff]", t))
+    alnum = len(re.findall(r"[\w]", t, flags=re.UNICODE))
+    symbols = len(re.findall(r"[^\w\s]", t, flags=re.UNICODE))
+
+    cjk_ratio = cjk / total
+    alnum_ratio = alnum / total
+    symbol_ratio = symbols / total
+
+    if symbol_ratio > 0.55 and alnum_ratio < 0.35:
+        return False
+    if cjk_ratio < 0.05 and alnum_ratio < 0.2:
+        return False
+    if re.fullmatch(r"[^\w]+", t):
+        return False
+    return True
+
+
 async def run(payload: dict) -> dict:
     from pydub import AudioSegment
 
@@ -38,14 +62,28 @@ async def run(payload: dict) -> dict:
     timeline: list[dict] = []
     offset_ms = 0
 
+    skipped = 0
     for i, sentence in enumerate(sentences):
         text = (sentence or "").strip()
-        if not text:
+        if not text or not looks_speakable(text):
+            skipped += 1
             continue
 
-        mp3_bytes = await synthesize_sentence(text, voice, rate)
-        segment = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
+        try:
+            mp3_bytes = await synthesize_sentence(text, voice, rate)
+            if not mp3_bytes:
+                skipped += 1
+                continue
+            segment = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
+        except Exception:
+            # Skip unsynthesizable OCR line and continue with remaining text.
+            skipped += 1
+            continue
+
         duration_ms = len(segment)
+        if duration_ms <= 0:
+            skipped += 1
+            continue
 
         timeline.append(
             {
@@ -58,7 +96,7 @@ async def run(payload: dict) -> dict:
         offset_ms += duration_ms
 
     if offset_ms == 0:
-        raise ValueError("No speakable sentences in chunk")
+        raise ValueError("No speakable OCR text in chunk")
 
     out_buffer = io.BytesIO()
     combined.export(out_buffer, format="mp3")

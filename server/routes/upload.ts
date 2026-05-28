@@ -5,7 +5,9 @@ import multer from "multer";
 import { config } from "../config.js";
 import { insertBookWithChunks } from "../db/client.js";
 import { parseBookFile } from "../services/parser/index.js";
+import type { ParseLangHint } from "../services/parser/index.js";
 import {
+  chunksToMarkdown,
   deleteFileIfExists,
   ensureUploadDir,
   generateBookId,
@@ -13,8 +15,13 @@ import {
   isAcademicFlag,
   writeBookFiles,
 } from "../services/storage.js";
-import type { ParsedChunk } from "../types/book.js";
 import type { UploadResponseDto } from "../types/book.js";
+
+function parseLang(value: unknown): ParseLangHint {
+  if (value === "zh") return "zh";
+  if (value === "en") return "en";
+  return "auto";
+}
 
 ensureUploadDir();
 
@@ -53,30 +60,12 @@ const upload = multer({
 // ---------------------------------------------------------------------------
 
 /**
- * Convert parsed chunks to a simple Markdown representation for source.md.
- * Each chunk is separated by a horizontal rule so the file is human-readable.
- */
-function chunksToMarkdown(
-  title: string,
-  author: string,
-  chunks: ParsedChunk[]
-): string {
-  const header = `# ${title}\n\n**Author:** ${author}\n\n`;
-  const body = chunks
-    .map((c) => {
-      const chapterLine = c.chapterTitle ? `## ${c.chapterTitle}\n\n` : "";
-      return `${chapterLine}${c.text}`;
-    })
-    .join("\n\n---\n\n");
-  return header + body;
-}
-
-/**
  * Process a single uploaded file: parse → write file tree → insert DB → unlink temp.
  */
 async function processUploadedFile(
   file: Express.Multer.File,
-  academic: boolean
+  academic: boolean,
+  lang: ParseLangHint
 ): Promise<UploadResponseDto> {
   const sourceType = getSourceType(file.originalname, file.mimetype);
   if (!sourceType) {
@@ -92,7 +81,8 @@ async function processUploadedFile(
       file.path,
       file.originalname,
       sourceType,
-      academic
+      academic,
+      lang
     );
 
     // 1. Write persistent file tree: /library/books/<bookId>/source.md + chunks.json
@@ -146,11 +136,12 @@ uploadRouter.post("/", upload.array("file", 50), async (req, res) => {
   }
 
   const academic = isAcademicFlag(req.body?.academic);
+  const lang = parseLang(req.body?.lang);
 
   // ── Single-file path (backwards-compatible response shape) ──────────────
   if (files.length === 1) {
     try {
-      const result = await processUploadedFile(files[0], academic);
+      const result = await processUploadedFile(files[0], academic, lang);
       res.status(201).json(result);
     } catch (err) {
       const message =
@@ -168,7 +159,7 @@ uploadRouter.post("/", upload.array("file", 50), async (req, res) => {
   await Promise.allSettled(
     files.map(async (file) => {
       try {
-        const result = await processUploadedFile(file, academic);
+        const result = await processUploadedFile(file, academic, lang);
         results.push(result);
       } catch (err) {
         const message =

@@ -172,9 +172,11 @@ booksRouter.get("/:id/chunk/:index/tts", async (req, res) => {
     );
     res.json(payload);
   } catch (err) {
-    console.error("TTS error:", err);
     const message =
       err instanceof Error ? err.message : "TTS synthesis failed";
+    if (!message.includes("No speakable OCR text")) {
+      console.error("TTS error:", err);
+    }
     res.status(422).json({ error: message });
   }
 });

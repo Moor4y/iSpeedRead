@@ -1,10 +1,24 @@
 import { config } from "../config.js";
 import type { ParsedChunk } from "../types/book.js";
 import { splitIntoSentences } from "./sentences.js";
+import { cjkDensity } from "./lang.js";
 
 function countWords(text: string): number {
-  const matches = text.trim().match(/\S+/g);
-  return matches ? matches.length : 0;
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+
+  const whitespaceTokens = trimmed.match(/\S+/g)?.length ?? 0;
+  const cjkChars =
+    trimmed.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu)
+      ?.length ?? 0;
+
+  // CJK text often has no spaces; approximate "word" units from characters.
+  if (cjkChars > 0) {
+    const cjkUnits = Math.ceil(cjkChars / 2);
+    return Math.max(whitespaceTokens, cjkUnits);
+  }
+
+  return whitespaceTokens;
 }
 
 function splitParagraphs(text: string): string[] {
@@ -15,13 +29,13 @@ function splitParagraphs(text: string): string[] {
 }
 
 const CHAPTER_LINE_PATTERN =
-  /^(?:(?:chapter|part|section|lecture)\s+)?(\d+|[ivxlcdm]+)\s*[:.)-]?\s*\S+/i;
+  /^(?:(?:chapter|part|section|lecture)\s+)?(\d+|[ivxlcdm]+)\s*[:.)-]?\s*\S+|^第[\d一二三四五六七八九十百千两零]+[章节回部卷篇]\s*[:：.)-]?\s*\S*/i;
 
 export function isHeadingLike(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length === 0 || trimmed.length > 120) return false;
   if (CHAPTER_LINE_PATTERN.test(trimmed)) return true;
-  if (/[.!?]["']?\s*$/.test(trimmed)) return false;
+  if (/[.!?。！？]["']?\s*$/.test(trimmed)) return false;
   if (countWords(trimmed) > 14) return false;
   // Short title-case lines common in technical books (e.g. "The Nature of Complexity")
   if (
@@ -47,7 +61,11 @@ function splitPdfLinesIntoBlocks(text: string): string[] {
 
   const flushBody = () => {
     if (bodyLines.length > 0) {
-      blocks.push(bodyLines.join(" "));
+      const joined =
+        cjkDensity(bodyLines.join("")) >= 0.2
+          ? bodyLines.join("")
+          : bodyLines.join(" ");
+      blocks.push(joined);
       bodyLines = [];
     }
   };

@@ -22,4 +22,9 @@ describe("splitIntoSentences", () => {
     const result = splitIntoSentences("Dr. Smith arrived. He was late.");
     expect(result.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("splits Mandarin punctuation boundaries", () => {
+    const result = splitIntoSentences("这是第一句。这里是第二句！这是第三句？");
+    expect(result).toEqual(["这是第一句。", "这里是第二句！", "这是第三句？"]);
+  });
 });

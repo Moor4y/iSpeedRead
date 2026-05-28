@@ -16,9 +16,23 @@ export function ensureBooksDir(): void {
   fs.mkdirSync(config.booksDir, { recursive: true });
 }
 
+export function ensureWorkbenchDir(): void {
+  fs.mkdirSync(config.workbenchDir, { recursive: true });
+}
+
 /** Returns the per-book directory path: <booksDir>/<bookId> */
 export function getBookDir(bookId: string): string {
   return path.join(config.booksDir, bookId);
+}
+
+/** Returns workbench directory: <workbenchDir>/<itemId> */
+export function getWorkbenchDir(itemId: string): string {
+  return path.join(config.workbenchDir, itemId);
+}
+
+/** Returns versions directory for a book: <booksDir>/<bookId>/versions */
+export function getBookVersionsDir(bookId: string): string {
+  return path.join(getBookDir(bookId), "versions");
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +93,62 @@ export function writeBookFiles(
   );
 }
 
+/** Write converted workbench artifacts into /library/workbench/<itemId>/ */
+export function writeWorkbenchFiles(
+  itemId: string,
+  markdownText: string,
+  chunks: ParsedChunk[]
+): { markdownPath: string; chunksPath: string } {
+  const dir = getWorkbenchDir(itemId);
+  fs.mkdirSync(dir, { recursive: true });
+  const markdownPath = path.join(dir, "converted.md");
+  const chunksPath = path.join(dir, "chunks.json");
+  fs.writeFileSync(markdownPath, markdownText, "utf-8");
+  fs.writeFileSync(chunksPath, JSON.stringify(chunks, null, 2), "utf-8");
+  return { markdownPath, chunksPath };
+}
+
+export function ensureBookVersionsDir(bookId: string): string {
+  const versionsDir = getBookVersionsDir(bookId);
+  fs.mkdirSync(versionsDir, { recursive: true });
+  return versionsDir;
+}
+
+export function saveBookVersionSnapshot(
+  bookId: string,
+  sourceMdPath: string,
+  chunksPath: string,
+  snapshotName: string
+): { versionDir: string; sourceMdPath: string; chunksPath: string } {
+  const versionsDir = ensureBookVersionsDir(bookId);
+  const versionDir = path.join(versionsDir, snapshotName);
+  fs.mkdirSync(versionDir, { recursive: true });
+  const snapshotSource = path.join(versionDir, "source.md");
+  const snapshotChunks = path.join(versionDir, "chunks.json");
+  fs.copyFileSync(sourceMdPath, snapshotSource);
+  fs.copyFileSync(chunksPath, snapshotChunks);
+  return {
+    versionDir,
+    sourceMdPath: snapshotSource,
+    chunksPath: snapshotChunks,
+  };
+}
+
+export function chunksToMarkdown(
+  title: string,
+  author: string,
+  chunks: ParsedChunk[]
+): string {
+  const header = `# ${title}\n\n**Author:** ${author}\n\n`;
+  const body = chunks
+    .map((chunk) => {
+      const chapterLine = chunk.chapterTitle ? `## ${chunk.chapterTitle}\n\n` : "";
+      return `${chapterLine}${chunk.text}`;
+    })
+    .join("\n\n---\n\n");
+  return header + body;
+}
+
 /**
  * Read chunks.json from the book directory.
  * Returns null if the file does not exist (e.g. legacy book without file tree).
@@ -99,6 +169,13 @@ export function readBookChunks(bookId: string): ParsedChunk[] | null {
  */
 export function deleteBookDir(bookId: string): void {
   const dir = getBookDir(bookId);
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export function deleteWorkbenchDir(itemId: string): void {
+  const dir = getWorkbenchDir(itemId);
   if (fs.existsSync(dir)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }

@@ -38,6 +38,11 @@ export const config = {
     process.env.LIBRARY_ROOT || "library",
     "books"
   ),
+  workbenchDir: path.resolve(
+    projectRoot,
+    process.env.LIBRARY_ROOT || "library",
+    "workbench"
+  ),
   dbPath: path.resolve(projectRoot, process.env.DB_PATH || "data/library.db"),
   pythonPath: process.env.PYTHON_PATH || "python",
   academicScriptPath: path.resolve(

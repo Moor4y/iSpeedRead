@@ -105,11 +105,29 @@ Batch response:
 }
 ```
 
-After upload, the original source file is deleted. Processed content lives in `library/books/<bookId>/source.md` and `library/books/<bookId>/chunks.json`.
+After upload, the server temp copy is deleted. Processed content lives in `library/books/<bookId>/source.md` and `library/books/<bookId>/chunks.json`.
 
 ---
 
-### 2. Browse the catalog
+### 2. Server Admin UI (PDF -> Markdown workbench)
+
+Open `http://localhost:5000/admin` (or use the **Admin** button in the catalog).
+
+What you can do:
+
+- Drag/drop multiple PDFs, select multiple files, or choose a folder for workbench intake
+- Select **English** or **中文** language metadata at upload/convert time
+- Use **Strict OCR cleanup** during convert for noisy scanned Chinese PDFs
+- Convert temp PDFs into markdown + chunks preview
+- Promote converted output into long-term library storage (`library/books/<bookId>/`)
+- Create manual markdown/chunk versions for any book
+- Delete workbench items or books
+
+This admin flow is designed around **temp PDF management** vs **long-term markdown/versioned storage**.
+
+---
+
+### 3. Browse the catalog
 
 Open `http://localhost:5173`. The **Library** screen lists every ingested book with its author and page count. Tap or click any title to open it.
 
@@ -117,7 +135,7 @@ If the list is empty, the page shows: *"No books yet. Upload an EPUB or PDF to t
 
 ---
 
-### 3. Reading view
+### 4. Reading view
 
 The reader uses a **triple-buffer viewport** — the previous, current, and next chunks are all rendered simultaneously. Swiping or clicking the edge arrows slides between them with a 150 ms translate animation.
 
@@ -127,7 +145,7 @@ The reader uses a **triple-buffer viewport** — the previous, current, and next
 
 ---
 
-### 4. TTS (text-to-speech)
+### 5. TTS (text-to-speech)
 
 The TTS controls live in the reading header.
 
@@ -145,7 +163,7 @@ TTS audio is synthesized on first play (may take up to a minute for long chunks)
 
 ---
 
-### 5. Offline cache
+### 6. Offline cache
 
 The PWA caches the app shell and pre-fetches chunks ahead of your reading position using localForage. Your reading checkpoint (last chunk index) is saved locally, so closing and reopening the app returns you to where you left off.
 
@@ -162,6 +180,15 @@ The PWA caches the app shell and pre-fetches chunks ahead of your reading positi
 | `DELETE` | `/api/books/:id` | Delete a book (DB row + directory) |
 | `GET` | `/api/books/:id/chunk/:index` | Fetch one chunk (0-based) |
 | `GET` | `/api/books/:id/chunk/:index/tts?lang=en\|zh` | Neural TTS audio + sentence timeline |
+| `GET` | `/api/admin/workbench` | List workbench items |
+| `POST` | `/api/admin/upload` | Upload one or more PDFs to workbench (`multipart/form-data`, repeat field `file`, optional `lang=en\|zh`) |
+| `POST` | `/api/admin/workbench/:id/convert` | Convert workbench PDF to markdown/chunks (optional `lang`) |
+| `GET` | `/api/admin/workbench/:id/preview` | Return converted markdown preview |
+| `POST` | `/api/admin/workbench/:id/promote` | Promote converted output into canonical library storage |
+| `DELETE` | `/api/admin/workbench/:id` | Delete workbench item + temp files |
+| `GET` | `/api/admin/books/:id/versions` | List manual versions for a book |
+| `POST` | `/api/admin/books/:id/versions` | Create manual snapshot version (optional `label`, `lang`) |
+| `DELETE` | `/api/admin/books/:id` | Delete a book (same behavior as `/api/books/:id`) |
 
 ### GET /api/books response
 
@@ -234,10 +261,19 @@ Open `http://<laptop-ip>:5000` on the iPad. The server now serves the PWA direct
 ```
 library/
   uploads/          # Temp dir — source files are deleted after processing
+  workbench/
+    <uuid>/
+      source.pdf    # Temp admin-uploaded PDF copy
+      converted.md  # Converted markdown preview (before promote)
+      chunks.json   # Converted chunks preview (before promote)
   books/
     <uuid>/
       source.md     # Human-readable Markdown of the full book text
       chunks.json   # Parsed chunks with sentences and chapter titles
+      versions/
+        <timestamp>/
+          source.md   # Manual snapshot
+          chunks.json # Manual snapshot
   tts/
     <uuid>/
       <index>_<lang>.json   # Cached TTS audio + timeline per chunk
